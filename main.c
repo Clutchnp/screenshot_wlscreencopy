@@ -1,19 +1,13 @@
 #define _GNU_SOURCE
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
 #include <fcntl.h>
-#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <wayland-client-core.h>
-#include <wayland-client-protocol.h>
 #include <wayland-client.h>
-#include <wayland-util.h>
 
 struct frame_data {
     struct wl_buffer* buffer;
