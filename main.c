@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
 #include <fcntl.h>
+#include <png.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,13 +36,58 @@ int create_shm_file(size_t size) {
 }
 
 void process_pixels(void* data, int width, int height, int stride, uint32_t format) {
-    FILE* f = fopen("capture.raw", "wb");
+    FILE* f = fopen("capture.png", "wb");
     if (!f) {
         perror("fopen");
         return;
     }
-    for (int y = 0; y < height; y++)
-        fwrite((uint8_t*)data + y * stride, 1, width * 4, f);
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr) {
+        fprintf(stderr, "Could not allocate write struct\n");
+        fclose(f);
+    }
+
+    // Create info struct
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) {
+        fprintf(stderr, "Could not allocate info struct\n");
+        png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+        fclose(f);
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        fprintf(stderr, "Error during png creation\n");
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        fclose(f);
+    }
+    png_init_io(png_ptr, f);
+
+    // Write header (8 bit color depth)
+    png_set_IHDR(png_ptr, info_ptr, width, height, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+      PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+
+    png_write_info(png_ptr, info_ptr);
+
+    uint8_t* ndata = (uint8_t*)data;
+    for (int y = 0; y < height; y++) {
+        png_bytep row = malloc(width * 3);
+        if (!row) {
+            fprintf(stderr, "Failed to allocate row buffer\n");
+            break;
+        }
+        for (int x = 0; x < width; x++) {
+            row[x * 3 + 0] = ndata[y * stride + x * 4 + 2];
+            row[x * 3 + 1] = ndata[y * stride + x * 4 + 1];
+            row[x * 3 + 2] = ndata[y * stride + x * 4 + 0];
+        }
+        png_write_row(png_ptr, row);
+        free(row);
+    }
+
+    png_write_end(png_ptr, info_ptr);
+
+    // Cleanup
+    png_destroy_write_struct(&png_ptr, &info_ptr);
     fclose(f);
 }
 
@@ -104,13 +150,11 @@ static void frame_buffer(void* data, struct zwlr_screencopy_frame_v1* frame, uin
 
 static void frame_ready(void* data, struct zwlr_screencopy_frame_v1* frame, uint32_t tv_sec_hi,
   uint32_t tv_sec_lo, uint32_t tv_nsec) {
-    fprintf(stdout, "yo");
     struct frame_data* fdata = data;
     fprintf(stdout, "Frame ready, saving to capture.raw\n");
     printf("w: %d, h: %d, stride: %d\n", fdata->width, fdata->height, fdata->stride);
     process_pixels(
       fdata->shm_data, fdata->width, fdata->height, fdata->stride, WL_SHM_FORMAT_XRGB8888);
-    fprintf(stdout, "NO SEGFAULT HUH T_T");
     munmap(fdata->shm_data, fdata->size);
     wl_buffer_destroy(fdata->buffer);
     zwlr_screencopy_frame_v1_destroy(frame);
@@ -139,7 +183,7 @@ static void buffer_done(void* data, struct zwlr_screencopy_frame_v1* zwlr_screen
 }
 static void flags_recieved(
   void* data, struct zwlr_screencopy_frame_v1* zwlr_screencopy_frame_v1, uint32_t flags) {
-    fprintf(stdout, "flags recieved event, ignored");
+    fprintf(stdout, "flags recieved event, ignored\n");
 }
 
 static void global_handler(
@@ -160,7 +204,6 @@ static const struct wl_registry_listener registry_listener = {
     .global = global_handler,
     .global_remove = global_remove_handler,
 };
-
 
 int main() {
     struct wl_display* display = wl_display_connect(NULL);
