@@ -264,7 +264,9 @@ static void global_remove_handler(void* data, struct wl_registry* registry, uint
 static void configure(void* data, struct xdg_surface* xdg_surface, uint32_t serial){
     xdg_surface_ack_configure(xdg_surface, serial);
     struct frame_data* fdata = data;
+    wl_surface_attach(fdata->surface, fdata->buffer, 0, 0);
     wl_surface_commit(fdata->surface);
+    sleep(10);
 }
 
   static void xdg_wm_base_ping(void* data, struct xdg_wm_base* xdg_wm_base, uint32_t serial) {
@@ -305,6 +307,7 @@ int main() {
     xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
     xdg_surface_add_listener(xdg_surface, &xdg_surface_listener,fdata);
     xdg_toplevel_set_title(xdg_toplevel, "Wayland Capture Display");
+    wl_surface_commit(fdata->surface);
     zwlr_screencopy_frame_v1_add_listener(frame, &frame_listener, fdata);
     wl_display_flush(display);
     while (wl_display_dispatch(display) != -1)
