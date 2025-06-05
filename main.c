@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+// #include "viewport.h"
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
 #include "xdg-shell.h"
 #include "zwp-dmabuf-unstable-v1-client-protocol.h"
@@ -19,6 +20,7 @@ struct frame_data {
     struct wl_buffer* buffer;
     struct gbm_device* gbm;
     struct gbm_bo* bo;
+    // struct wp_viewport* viewport;
     struct wl_display* display;
     int render_node;
     int width, height, stride;
@@ -32,16 +34,15 @@ static void* output = NULL;
 static void* wl_shm = NULL;
 static void* dmabuf = NULL;
 static void* xdg_wm_base = NULL;
+static void* viewporter = NULL;
 static struct xdg_toplevel* xdg_toplevel;
 static struct xdg_surface* xdg_surface;
 static struct zwlr_screencopy_manager_v1* screencopy_manager;
 static struct zwlr_screencopy_frame_v1* frame;
-
 volatile sig_atomic_t should_exit = 0;
 
 void handle_sigint(int signum) {
     should_exit = 1;
-    _exit(0);
 }
 
 static void cleanup(struct frame_data* fdata) {
@@ -76,7 +77,7 @@ static void frame_ready(void* data, struct zwlr_screencopy_frame_v1* frame, uint
     printf("Frame ready: %dx%d stride=%d\n", fdata->width, fdata->height, fdata->stride);
 
     wl_surface_attach(fdata->surface, fdata->buffer, 0, 0);
-    wl_surface_damage(fdata->surface, 0, 0, fdata->width, fdata->height);
+    // wl_surface_damage(fdata->surface, 0, 0, fdata->width, fdata->height);
     wl_surface_commit(fdata->surface);
     wl_display_flush(fdata->display);
 }
@@ -168,6 +169,8 @@ static void global_handler(
         dmabuf = wl_registry_bind(registry, id, &zwp_linux_dmabuf_v1_interface, 5);
     else if (strcmp(interface, xdg_wm_base_interface.name) == 0)
         xdg_wm_base = wl_registry_bind(registry, id, &xdg_wm_base_interface, 6);
+    // else if (strcmp(interface, wp_viewport_interface.name) == 0)
+    //     viewporter = wl_registry_bind(registry, id, &wp_viewport_interface, 6);
 }
 
 static void global_remove_handler(void* data, struct wl_registry* registry, uint32_t id) {}
@@ -235,7 +238,7 @@ int main() {
     struct frame_data* fdata = calloc(1, sizeof(struct frame_data));
     fdata->surface = wl_compositor_create_surface(compositor);
     fdata->display = display;
-
+    // fdata->viewport = wp_viewporter_get_viewport(viewporter, fdata->surface);
     xdg_wm_base_add_listener(xdg_wm_base, &wm_base_listener, NULL);
     xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, fdata->surface);
     xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
@@ -244,7 +247,7 @@ int main() {
     xdg_toplevel_set_title(xdg_toplevel, "Wayland Capture Display");
     wl_surface_commit(fdata->surface);
 
-    frame = zwlr_screencopy_manager_v1_capture_output(screencopy_manager, 1, output);
+    frame = zwlr_screencopy_manager_v1_capture_output(screencopy_manager, 0, output);
     zwlr_screencopy_frame_v1_add_listener(frame, &frame_listener, fdata);
 
     while (!should_exit && wl_display_dispatch(display) != -1)
